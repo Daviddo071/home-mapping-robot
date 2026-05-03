@@ -18,13 +18,19 @@ LANDMARKS = np.array([
     [0, -5]
 ]) # Landmark locations in x, y (m, m)
 
+# Noise parameters:
+Q_STD_DEV = np.array([0.2, np.deg2rad(1)]) # Observation noise - standard deviation
+Q = np.diag(Q_STD_DEV) ** 2 # Observation noise - variance
+R_STD_DEV = np.array([1, np.deg2rad(10)]) # Prediction noise - standard deviation
+R = np.diag(R_STD_DEV) ** 2 # Prediction noise - variance
 
-def get_controls(t: float, ) -> np.ndarray:
+def get_controls(t: float, noisy: bool=False) -> np.ndarray:
     """
     Gets the control at time t.
     In SLAM research this is in m/s and rad/s
     To simplify my life, I multiply by DT here, so it is the change in m and rad.
     :param t: The current time of the simulation in s
+    :param noisy: Adds noise defined in R and R_STD_DEV above if set to True
     :return:
     """
     v = 1
@@ -33,12 +39,18 @@ def get_controls(t: float, ) -> np.ndarray:
         w = 0.1
     u = np.array([[v, w]]).T
 
+    if noisy:
+        noise = np.random.normal(0, R_STD_DEV)
+        noise = np.reshape(noise, u.shape)
+        u = u + noise
+
     u = u * DT
     return u
 
 def motion_model(x: np.ndarray, u: np.ndarray):
     """
-    Applies the motion model of a differential drive robot
+    Applies the motion model of a differential drive robot.
+    Makes up the prediction stage of the EKF.
     :param x: Input pose
     :param u: Input at time t from get_controls
     :return:
@@ -74,15 +86,18 @@ def make_observations(current_gt_pose: np.ndarray) -> np.ndarray:
     :return: np.ndarray of nx2. Each row is [r, theta]
     """
     current_position = np.array([current_gt_pose[0, 0], current_gt_pose[1, 0]]).reshape(-1, 2)
-    dxdy = LANDMARKS - current_position
-    ds = np.linalg.norm(dxdy, axis=1)
+    dx_dy = LANDMARKS - current_position
+    ds = np.linalg.norm(dx_dy, axis=1)
 
     dist_mask = ds <= SCAN_MAX
-    thetas = pi2pi(np.arctan2(dxdy[:,1], dxdy[:,0])-current_gt_pose[2,0])
+    thetas = pi2pi(np.arctan2(dx_dy[:,1], dx_dy[:,0])-current_gt_pose[2,0])
     zs = np.array([ds, thetas]).T
     zs = zs[dist_mask]
 
-    return zs
+    noise = np.random.normal(0, Q_STD_DEV, size=zs.shape)
+    z_noisy = zs + noise
+
+    return z_noisy
 
 def convert_observations(observations_t: np.ndarray, pose_t: np.ndarray) -> np.ndarray:
     """
@@ -103,7 +118,10 @@ def run_simulation(transient_plot: bool=False):
     counter = 0
 
     ground_truth_pose = np.zeros((3,1))
+    dead_reckoned_pose = np.zeros((3,1))
+
     ground_truth_history = np.zeros((1, 3))
+    dead_reckoned_history = np.zeros((1, 3))
 
     if transient_plot:
         plt.figure(figsize=(9, 6))
@@ -113,20 +131,30 @@ def run_simulation(transient_plot: bool=False):
         ts.append(t)
 
         u = get_controls(t)
+        u_noisy = get_controls(t, True)
 
         ground_truth_pose, G_t = motion_model(ground_truth_pose, u)
         ground_truth_history = np.vstack((ground_truth_history, ground_truth_pose.T))
+
+        dead_reckoned_pose, G_t_estimated = motion_model(dead_reckoned_pose, u_noisy)
+        dead_reckoned_history = np.vstack((dead_reckoned_history, dead_reckoned_pose.T))
+
         z = make_observations(ground_truth_pose)
         z_xy = convert_observations(z, ground_truth_pose)
 
         if transient_plot:
             plt.cla()
             plt.gcf().canvas.mpl_connect('key_press_event', lambda event: exit(0) if event.key == 'q' else None)
-            plt.plot(ground_truth_pose[0], ground_truth_pose[1], ".b", label="Ground truth")
+
+            plt.plot(ground_truth_pose[0], ground_truth_pose[1], ".b", label="Ground truth pose")
             plt.plot(ground_truth_history[:, 0], ground_truth_history[:, 1], "-b")
+            plt.plot(dead_reckoned_pose[0], dead_reckoned_pose[1], ".r", label="Dead-reckoned pose")
+            plt.plot(dead_reckoned_history[:, 0], dead_reckoned_history[:, 1], "-r")
+
             plt.plot(LANDMARKS[:,0], LANDMARKS[:,1], "*k", label="Landmarks")
-            plt.plot(z_xy[:, 0], z_xy[:, 1], "+r")
-            plt.plot([], [], "+r", label="Observed landmarks")
+            plt.plot(z_xy[:, 0], z_xy[:, 1], "+g")
+            plt.plot([], [], "+g", label="Currently Observed Landmarks")
+
             plt.axis("equal")
             plt.grid(True)
             plt.legend()
@@ -135,7 +163,8 @@ def run_simulation(transient_plot: bool=False):
     print(f"Done in {counter} iterations")
 
     plt.figure(figsize=(9, 6))
-    plt.plot(ground_truth_history[:, 0], ground_truth_history[:, 1], "-b", label="Ground Truth")
+    plt.plot(ground_truth_history[:, 0], ground_truth_history[:, 1], "-b", label="Ground Truth Pose")
+    plt.plot(dead_reckoned_history[:, 0], dead_reckoned_history[:, 1], "-r", label="Dead-reckoned Pose")
     plt.plot(LANDMARKS[:,0], LANDMARKS[:,1], "*k", label="Landmarks")
     plt.axis("equal")
     plt.grid(True)
@@ -160,7 +189,7 @@ def run_simulation(transient_plot: bool=False):
 
 
 def main():
-    run_simulation()
+    run_simulation(True)
 
 if __name__ == "__main__":
     main()

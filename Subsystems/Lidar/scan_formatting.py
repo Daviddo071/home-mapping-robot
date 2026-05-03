@@ -1,28 +1,13 @@
 import numpy as np
 
+def pi2pi(angle: float) -> float:
+    """
+    Wraps an angle provided in radians to be between -pi and pi
+    :param angle: Input angle in radians
+    :return:
+    """
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
-def wrap_angle(x, zero_2_2pi=False, degree=False):
-    if isinstance(x, float):
-        is_float = True
-    else:
-        is_float = False
-
-    x = np.asarray(x).flatten()
-    if degree:
-        x = np.deg2rad(x)
-
-    if zero_2_2pi:
-        mod_angle = x % (2 * np.pi)
-    else:
-        mod_angle = (x + np.pi) % (2 * np.pi) - np.pi
-
-    if degree:
-        mod_angle = np.rad2deg(mod_angle)
-
-    if is_float:
-        return mod_angle.item()
-    else:
-        return mod_angle
 
 def format_scan(scan: list, distance_threshold: float=6):
     """
@@ -32,7 +17,7 @@ def format_scan(scan: list, distance_threshold: float=6):
     :param scan:
     :return:
     """
-    result = np.array([[scan_point[2]/1000, wrap_angle(-np.deg2rad(scan_point[1]))] for scan_point in scan])
+    result = np.array([[scan_point[2]/1000, pi2pi(-np.deg2rad(scan_point[1]))] for scan_point in scan])
     result = result[result[:, 0] < distance_threshold]
     result = result[result[:, 1].argsort()]
     return result

@@ -12,11 +12,11 @@ SCANNER_DEVICE_PATH: str = 'COM4'
 SCANNER_TIMEOUT: int = 1 # In seconds
 
 # Scan Parameters
-SCAN_MAX_DISTANCE: float = 5 # Farthest point from the scanner to consider
+SCAN_MAX_DISTANCE: float = 5 # Farthest point (m) from the scanner to consider
 
 # Feature Extraction Parameters
-FEATURE_ANGLE_THRESHOLD: float = 45 # Angle at which to start considering corners
-FEATURE_DISTANCE_THRESHOLD: float = 0.1 # Distance at which to cluster and average corners
+FEATURE_ANGLE_THRESHOLD: float = 45 # Angle (degrees) at which to start considering corners
+FEATURE_DISTANCE_THRESHOLD: float = 0.5 # Distance (m) with which to cluster and average corners
 
 def get_scans(scansQueue: multiprocessing.Queue, stopQueue: multiprocessing.Queue):
     lidar = RPLidar(port=SCANNER_DEVICE_PATH, timeout=SCANNER_TIMEOUT, baudrate=SCANNER_BAUDRATE)

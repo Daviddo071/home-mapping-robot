@@ -34,11 +34,11 @@ def get_corners(polar_scan: np.ndarray, angle_threshold: float = np.deg2rad(45),
     """
     Features to extract are corners.
 
-    :param neighbourhood_radius:
-    :param polar_scan:
-    :param angle_threshold:
-    :param distance_threshold:
-    :param window_size:
+    :param polar_scan: Polar scan, nx2 (r, theta)
+    :param angle_threshold: Threshold used to determine corners in the scan
+    :param distance_threshold: Distance threshold of windows to consider when finding corners.
+    :param window_size: Amount of points to consider at a time.
+    :param neighbourhood_radius: Closeness of points for them to be considered as residing in the same neighborhood
     :return:
     """
     window_size = window_size if window_size%2==1 else window_size+1

@@ -1,8 +1,22 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-SIM_TIME = 40*np.pi
-DT = 0.2
+DT = 0.2 # Simulation time steps (s)
+SIM_TIME = 40*np.pi # Total simulation time (s)
+SCAN_MAX = 10 # Max effective distance (m) of the scanner
+
+LANDMARKS = np.array([
+    [10,-20],
+    [-10,-20],
+    [10,20],
+    [-10,20],
+    [5,10],
+    [-5,10],
+    [5,-10],
+    [-5,-10],
+    [0, 5],
+    [0, -5]
+]) # Landmark locations in x, y (m, m)
 
 
 def get_controls(t: float, ) -> np.ndarray:
@@ -43,36 +57,110 @@ def motion_model(x: np.ndarray, u: np.ndarray):
 
     return x, G
 
-def main():
+
+def pi2pi(angle: float) -> float:
+    """
+    Wraps an angle provided in radians to be between -pi and pi
+    :param angle: Input angle in radians
+    :return:
+    """
+    return (angle + np.pi) % (2 * np.pi) - np.pi
+
+
+def make_observations(current_gt_pose: np.ndarray) -> np.ndarray:
+    """
+    Observes the landmarks defined above. Scanning is limited by the scanner max distance defined above.
+    :param current_gt_pose: The robot's current ground truth pose
+    :return: np.ndarray of nx2. Each row is [r, theta]
+    """
+    current_position = np.array([current_gt_pose[0, 0], current_gt_pose[1, 0]]).reshape(-1, 2)
+    dxdy = LANDMARKS - current_position
+    ds = np.linalg.norm(dxdy, axis=1)
+
+    dist_mask = ds <= SCAN_MAX
+    thetas = pi2pi(np.arctan2(dxdy[:,1], dxdy[:,0])-current_gt_pose[2,0])
+    zs = np.array([ds, thetas]).T
+    zs = zs[dist_mask]
+
+    return zs
+
+def convert_observations(observations_t: np.ndarray, pose_t: np.ndarray) -> np.ndarray:
+    """
+    Converts observations from polar in the robot's frame to cartesian coordinates in the world's frame.
+    :param observations_t: Observations made at time t. nx2 with each row being (r, theta)
+    :param pose_t: Current pose of the robot, either GT or estimated. Form is 3x1 being (x, y, theta)
+    :return:
+    """
+    corrected_angles = observations_t[:, 1] + pose_t[2, 0]
+    observations_t_xy = np.array([[pose_t[0, 0] + observations_t[:, 0] * np.cos(corrected_angles),
+                         pose_t[1, 0] + observations_t[:, 0] * np.sin(corrected_angles)]])
+    return observations_t_xy
+
+
+def run_simulation(transient_plot: bool=False):
     t = 0
+    ts = [t]
     counter = 0
 
     ground_truth_pose = np.zeros((3,1))
-    ground_truth_history = np.zeros((3,1))
+    ground_truth_history = np.zeros((1, 3))
 
+    if transient_plot:
+        plt.figure(figsize=(9, 6))
     while t <= SIM_TIME:
-        print(f"Iteration {counter}")
         counter += 1
         t += DT
+        ts.append(t)
 
         u = get_controls(t)
 
         ground_truth_pose, G_t = motion_model(ground_truth_pose, u)
-        ground_truth_history = np.hstack((ground_truth_history, ground_truth_pose))
+        ground_truth_history = np.vstack((ground_truth_history, ground_truth_pose.T))
+        z = make_observations(ground_truth_pose)
+        z_xy = convert_observations(z, ground_truth_pose)
 
-        plt.cla()
-        # ChatGPT gave me this, exits if you press q
-        plt.gcf().canvas.mpl_connect('key_press_event', lambda event: exit(0) if event.key == 'q' else None)
-        plt.plot(ground_truth_pose[0], ground_truth_pose[1], ".b")
+        if transient_plot:
+            plt.cla()
+            plt.gcf().canvas.mpl_connect('key_press_event', lambda event: exit(0) if event.key == 'q' else None)
+            plt.plot(ground_truth_pose[0], ground_truth_pose[1], ".b", label="Ground truth")
+            plt.plot(ground_truth_history[:, 0], ground_truth_history[:, 1], "-b")
+            plt.plot(LANDMARKS[:,0], LANDMARKS[:,1], "*k", label="Landmarks")
+            plt.plot(z_xy[:, 0], z_xy[:, 1], "+r")
+            plt.plot([], [], "+r", label="Observed landmarks")
+            plt.axis("equal")
+            plt.grid(True)
+            plt.legend()
+            plt.pause(0.0001)
 
-        plt.plot(ground_truth_history[0, :], ground_truth_history[1, :], "-b")
-        plt.axis("equal")
-        plt.grid(True)
-        plt.pause(0.0001)
+    print(f"Done in {counter} iterations")
 
-    plt.ioff()
+    plt.figure(figsize=(9, 6))
+    plt.plot(ground_truth_history[:, 0], ground_truth_history[:, 1], "-b", label="Ground Truth")
+    plt.plot(LANDMARKS[:,0], LANDMARKS[:,1], "*k", label="Landmarks")
+    plt.axis("equal")
+    plt.grid(True)
+    plt.legend()
+    plt.title("Simulation output [XY]")
+
+    fig, axs = plt.subplots(3, 1, sharex=True, figsize=(9, 6))
+    axs[0].plot(ts, ground_truth_history[:, 0], "-b", label="Ground truth x")
+    axs[0].legend()
+    axs[0].grid(True)
+    axs[1].plot(ts, ground_truth_history[:, 1], "-k", label="Ground truth y")
+    axs[1].legend()
+    axs[1].grid(True)
+    axs[2].plot(ts, ground_truth_history[:, 2], "-r", label="Ground truth θ")
+    axs[2].legend()
+    axs[2].grid(True)
+    axs[2].set_xlabel("Time")
+    fig.suptitle("Simulation output [XYθ]")
+    plt.tight_layout()
+
     plt.show()
 
+
+def main():
+    run_simulation()
 
 if __name__ == "__main__":
     main()
